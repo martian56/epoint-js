@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: bun install --frozen-lockfile
+      - run: bunx biome check .
+      - run: bun run typecheck
+      - run: bun run build
+      - run: node_modules/.bin/vitest run --exclude '**/sandbox.test.ts'
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Start the epoint sandbox
+        run: |
+          docker run -d --name sandbox -p 8181:8181 ghcr.io/martian56/epoint-sandbox:latest
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8181/api/heartbeat > /dev/null; then
+              echo "sandbox is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "sandbox did not become healthy"
+          docker logs sandbox
+          exit 1
+      - run: bunx vitest run test/sandbox.test.ts
+        env:
+          EPOINT_BASE_URL: http://localhost:8181
