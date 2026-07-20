@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+Documentation and packaging only, no library changes since 0.1.0. First release
+published through the automated trusted-publishing workflow.
+
 ## 0.1.0
 
 First release.
