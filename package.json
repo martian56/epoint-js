@@ -1,0 +1,52 @@
+{
+  "name": "@martian56/epoint",
+  "version": "0.1.0",
+  "description": "TypeScript client for the epoint.az payment gateway",
+  "type": "module",
+  "license": "MIT",
+  "author": "martian56",
+  "homepage": "https://github.com/martian56/epoint-js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martian56/epoint-js.git"
+  },
+  "keywords": [
+    "epoint",
+    "epoint-az",
+    "payment",
+    "gateway",
+    "azerbaijan",
+    "sdk"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "CHANGELOG.md"],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "test:unit": "vitest run --exclude '**/sandbox.test.ts'",
+    "check": "biome check . && tsc --noEmit && vitest run"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.4",
+    "@types/node": "^26.1.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
