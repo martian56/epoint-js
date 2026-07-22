@@ -1,3 +1,4 @@
+import { Status } from './enums'
 import { GatewayError, TransportError } from './errors'
 import { EpointResponse } from './response'
 import { encodePayload, sign } from './signing'
@@ -27,7 +28,7 @@ export function parse(statusCode: number, body: unknown): EpointResponse {
   }
 
   const record = body as Payload
-  if (record.status === 'error') {
+  if (record.status === Status.ERROR) {
     throw new GatewayError(String(record.message ?? 'request refused'), {
       code: record.code == null ? undefined : String(record.code),
       status: String(record.status),

@@ -1,3 +1,5 @@
+import { SETTLED_STATUSES } from './enums'
+
 function asString(value: unknown): string | undefined {
   return value === undefined || value === null ? undefined : String(value)
 }
@@ -10,7 +12,7 @@ export class EpointResponse {
   }
 
   get ok(): boolean {
-    return this.raw.status === 'success'
+    return SETTLED_STATUSES.has(String(this.raw.status))
   }
 
   get transaction(): string | undefined {
@@ -62,7 +64,7 @@ export function toCallback(raw: Record<string, unknown>): EpointCallback {
     cardName: (raw.card_name as string | null) ?? null,
     amount: raw.amount == null ? 0 : Number(raw.amount),
     otherAttr: raw.other_attr,
-    ok: status === 'success',
+    ok: SETTLED_STATUSES.has(status),
     raw,
   }
 }
