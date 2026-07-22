@@ -1,4 +1,5 @@
 import { verifyCallback } from './callback'
+import { Currency, Language } from './enums'
 import { TransportError } from './errors'
 import type { EpointCallback, EpointResponse } from './response'
 import { buildBody, type Payload, parse } from './transport'
@@ -39,8 +40,8 @@ export class EpointClient {
     this.publicKey = options.publicKey
     this.privateKey = options.privateKey
     this.baseUrl = (options.baseUrl ?? PRODUCTION_URL).replace(/\/+$/, '')
-    this.language = options.language ?? 'az'
-    this.currency = options.currency ?? 'AZN'
+    this.language = options.language ?? Language.AZ
+    this.currency = options.currency ?? Currency.AZN
     this.successRedirectUrl = options.successRedirectUrl
     this.errorRedirectUrl = options.errorRedirectUrl
     this.timeoutMs = options.timeoutMs ?? 30_000
@@ -58,7 +59,7 @@ export class EpointClient {
       publicKey,
       privateKey,
       baseUrl: env.EPOINT_BASE_URL ?? PRODUCTION_URL,
-      language: env.EPOINT_LANGUAGE ?? 'az',
+      language: env.EPOINT_LANGUAGE ?? Language.AZ,
       successRedirectUrl: env.EPOINT_SUCCESS_REDIRECT_URL,
       errorRedirectUrl: env.EPOINT_FAILED_REDIRECT_URL,
       ...overrides,
