@@ -43,12 +43,14 @@ try {
 ## Configuration
 
 ```ts
+import { Currency, EpointClient, Language } from '@martian56/epoint'
+
 new EpointClient({
   publicKey: 'i000000001',
   privateKey: 'your-private-key',
   baseUrl: 'https://epoint.az',
-  language: 'az',
-  currency: 'AZN',
+  language: Language.AZ,
+  currency: Currency.AZN,
   successRedirectUrl: 'https://shop.example/thanks',
   errorRedirectUrl: 'https://shop.example/failed',
 })
@@ -90,6 +92,40 @@ status.raw           // the full response object, snake_case
 ```
 
 `getInstallmentPlans` resolves to an array and `listWallets` to a record.
+
+## Enums
+
+Every value the API uses has an enum. They come from the sandbox's own definitions, so they match
+what production sends. Each is a const object with a matching type, so you get both the values
+and the union, and a plain string still works anywhere an enum is accepted.
+
+```ts
+import { Currency, EpointClient, Language, Status } from '@martian56/epoint'
+
+const client = EpointClient.fromEnv({ language: Language.EN, currency: Currency.USD })
+
+const status = await client.getStatus(transaction)
+if (status.status === Status.SUCCESS) {
+  await fulfil(orderId)
+}
+```
+
+| Enum | Values |
+|---|---|
+| `Status` | new, success, failed, error, returned, server_error |
+| `CardStatus` | new, active, pending, rejected, expired, session_expired |
+| `InvoiceStatus` | waiting_for_payment, paid, canceled |
+| `B2BStatus` | PENDING, PROCESSING, SUCCESS, FAILED |
+| `OperationCode` | 001 card registration, 100 payment, 200 registration with payment |
+| `Language` | az, en, ru |
+| `Currency` | AZN, USD, EUR, RUB |
+
+Currency is not uniform across the API. Checkout takes all four, but split, pre-auth, refund,
+reverse, payout and wallet take AZN and nothing else. `SUPPORTED_CURRENCIES` and `AZN_ONLY` hold
+those two sets.
+
+`SETTLED_STATUSES` is what `ok` checks, and `USABLE_CARD_STATUSES` is the set a card has to be in
+before you can charge it.
 
 ## Methods
 
