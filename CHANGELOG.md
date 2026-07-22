@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- The README documents the enums and uses them in its examples, instead of the bare strings it
+  still showed.
+
 ## 0.2.0
 
 - Enums for the values the API uses: `Status`, `CardStatus`, `InvoiceStatus`, `B2BStatus`,
