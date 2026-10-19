@@ -42,6 +42,42 @@ function clientWith(body: unknown, status = 200) {
 }
 
 describe('EpointClient', () => {
+  it('sends the redirect urls given to a card registration', async () => {
+    const { client, calls } = clientWith({ status: 'success', card_id: 'ce1' })
+    await client.registerCard({
+      successRedirectUrl: 'https://shop.test/ok',
+      errorRedirectUrl: 'https://shop.test/fail',
+    })
+
+    expect(calls[0]!.payload.success_redirect_url).toBe('https://shop.test/ok')
+    expect(calls[0]!.payload.error_redirect_url).toBe('https://shop.test/fail')
+    expect(calls[0]!.payload.refund).toBe(0)
+  })
+
+  it('falls back to the client redirect urls for a card registration', async () => {
+    const { fetchImpl, calls } = mockFetch({ status: 'success', card_id: 'ce1' })
+    const client = new EpointClient({
+      publicKey: PUBLIC_KEY,
+      privateKey: PRIVATE_KEY,
+      baseUrl: 'https://epoint.test',
+      successRedirectUrl: 'https://shop.test/default-ok',
+      errorRedirectUrl: 'https://shop.test/default-fail',
+      fetch: fetchImpl,
+    })
+    await client.registerCard()
+    await client.registerCard({ successRedirectUrl: 'https://shop.test/ok' })
+
+    expect(calls[0]!.payload.success_redirect_url).toBe('https://shop.test/default-ok')
+    expect(calls[0]!.payload.error_redirect_url).toBe('https://shop.test/default-fail')
+    expect(calls[1]!.payload.success_redirect_url).toBe('https://shop.test/ok')
+    expect(calls[1]!.payload.error_redirect_url).toBe('https://shop.test/default-fail')
+
+    const bare = clientWith({ status: 'success', card_id: 'ce1' })
+    await bare.client.registerCard()
+    expect(bare.calls[0]!.payload).not.toHaveProperty('success_redirect_url')
+    expect(bare.calls[0]!.payload).not.toHaveProperty('error_redirect_url')
+  })
+
   it('signs the request and parses a success response', async () => {
     const { client, calls } = clientWith({ status: 'success', transaction: 'te1' })
     const result = await client.createPayment(30.75, 'order-1')

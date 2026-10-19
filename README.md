@@ -127,6 +127,24 @@ those two sets.
 `SETTLED_STATUSES` is what `ok` checks, and `USABLE_CARD_STATUSES` is the set a card has to be in
 before you can charge it.
 
+## Saving a card without a payment
+
+`registerCard` saves a card with no charge, for example when the first period is free and later
+ones are charged with `chargeSavedCard`. Keep the `card_id` it returns and send the customer to
+its `redirectUrl`.
+
+```ts
+const registration = await client.registerCard({
+  description: 'Card for renewals',
+  successRedirectUrl: 'https://shop.example/card/saved',
+  errorRedirectUrl: 'https://shop.example/card/failed',
+})
+storeCard(registration.get<string>('card_id'))
+```
+
+The customer comes back to `successRedirectUrl` or `errorRedirectUrl`, or to the client's own
+defaults when neither is given. A card can be charged once `getCardStatus` reports it `active`.
+
 ## Methods
 
 | Group | Methods |

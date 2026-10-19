@@ -83,6 +83,39 @@ describe('sandbox', () => {
     expect(status.get('code')).toBe('116')
   })
 
+  it('returns the customer to the redirect urls of a card registration', async ({ skip }) => {
+    if (!available) skip()
+    const urls = {
+      successRedirectUrl: 'https://shop.test/card-ok',
+      errorRedirectUrl: 'https://shop.test/card-fail',
+    }
+    const approved = await client.registerCard({ description: 'redirect check', ...urls })
+    const declined = await client.registerCard({ description: 'redirect check', ...urls })
+
+    const submit = (redirectUrl: string, card: string) => {
+      const token = redirectUrl.replace(/\/+$/, '').split('/').pop()?.split('?')[0] ?? ''
+      return fetch(`${SANDBOX_URL}/checkout/${token}`, {
+        method: 'POST',
+        body: new URLSearchParams({
+          card_number: card,
+          card_holder: 'TESTER',
+          month: '12',
+          year: '30',
+        }),
+        redirect: 'manual',
+      })
+    }
+    const ok = await submit(approved.redirectUrl!, '4111111111111111')
+    const failed = await submit(declined.redirectUrl!, '4000000000000116')
+
+    expect(ok.status).toBe(303)
+    expect(ok.headers.get('location')).toBe('https://shop.test/card-ok')
+    expect(failed.status).toBe(303)
+    expect(failed.headers.get('location')).toBe('https://shop.test/card-fail')
+    const cardId = approved.get<string>('card_id')!
+    expect((await client.getCardStatus(cardId)).get('status')).toBe('active')
+  })
+
   it('charges a saved card', async ({ skip }) => {
     if (!available) skip()
     const registration = await client.registerCard({ description: 'repeat' })
