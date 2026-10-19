@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- `registerCard` takes `successRedirectUrl` and `errorRedirectUrl`, so a card saved without a payment returns the
+  customer to your own page. Without them it uses the client's defaults, as the checkout
+  methods do.
+
 ## 0.2.1
 
 - The README documents the enums and uses them in its examples, instead of the bare strings it
