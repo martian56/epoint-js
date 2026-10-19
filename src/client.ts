@@ -218,6 +218,8 @@ export class EpointClient {
       language: options.language ?? this.language,
       refund: flag(options.forPayouts),
       description: options.description,
+      success_redirect_url: options.successRedirectUrl ?? this.successRedirectUrl,
+      error_redirect_url: options.errorRedirectUrl ?? this.errorRedirectUrl,
     })
   }
 

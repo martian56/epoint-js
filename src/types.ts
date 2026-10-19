@@ -43,6 +43,8 @@ export interface RegisterCardOptions {
   description?: string
   language?: string
   forPayouts?: boolean
+  successRedirectUrl?: string
+  errorRedirectUrl?: string
 }
 
 export interface InvoiceOptions {
