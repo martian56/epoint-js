@@ -21,6 +21,16 @@ export interface CheckoutOptions {
   otherAttr?: unknown
 }
 
+export interface PaymentOptions extends CheckoutOptions {
+  isInstallment?: boolean
+}
+
+export interface CheckoutForm {
+  url: string
+  data: string
+  signature: string
+}
+
 export interface ChargeOptions {
   description?: string
   language?: string
@@ -37,6 +47,8 @@ export interface InstallmentQueryOptions {
   amount?: Amount
   language?: string
   currency?: string
+  description?: string
+  otherAttr?: unknown
 }
 
 export interface RegisterCardOptions {
@@ -66,4 +78,5 @@ export interface BankTransferOptions {
   address?: string
   additionalInfo?: string
   webhookUrl?: string
+  bulkDescription?: string
 }

@@ -1,25 +1,24 @@
 import { verifyCallback } from './callback'
 import { Currency, Language } from './enums'
 import { TransportError } from './errors'
+import { formatMoney as money } from './money'
 import type { EpointCallback, EpointResponse } from './response'
 import { buildBody, type Payload, parse } from './transport'
 import type {
   Amount,
   BankTransferOptions,
   ChargeOptions,
+  CheckoutForm,
   CheckoutOptions,
   ClientOptions,
   InstallmentQueryOptions,
   InvoiceOptions,
+  PaymentOptions,
   RegisterCardOptions,
   ReverseOptions,
 } from './types'
 
 const PRODUCTION_URL = 'https://epoint.az'
-
-function money(value: Amount): string {
-  return Number(value).toFixed(2)
-}
 
 function flag(value: boolean | undefined, fallback = false): number {
   return (value ?? fallback) ? 1 : 0
@@ -79,6 +78,13 @@ export class EpointClient {
     }
   }
 
+  private payment(amount: Amount, orderId: string, options: PaymentOptions): Payload {
+    return {
+      ...this.checkout(amount, orderId, options),
+      is_installment: options.isInstallment === undefined ? undefined : flag(options.isInstallment),
+    }
+  }
+
   private async request(
     method: string,
     path: string,
@@ -107,9 +113,14 @@ export class EpointClient {
     }
   }
 
-  private async post(path: string, payload: Payload): Promise<EpointResponse> {
+  private async post(
+    path: string,
+    payload: Payload,
+    options: { paymentState?: boolean } = {},
+  ): Promise<EpointResponse> {
     const body = await buildBody(this.publicKey, this.privateKey, payload)
-    return parse(...(await this.request('POST', path, { body: new URLSearchParams(body) })))
+    const [status, parsed] = await this.request('POST', path, { body: new URLSearchParams(body) })
+    return parse(status, parsed, options)
   }
 
   private async postRaw(path: string, payload: Payload): Promise<unknown> {
@@ -131,23 +142,36 @@ export class EpointClient {
     )
   }
 
-  createPayment(
+  async createPayment(
     amount: Amount,
     orderId: string,
-    options: CheckoutOptions = {},
+    options: PaymentOptions = {},
   ): Promise<EpointResponse> {
-    return this.post('/api/1/request', this.checkout(amount, orderId, options))
+    return this.post('/api/1/request', this.payment(amount, orderId, options))
   }
 
-  createPaymentRequest(
+  async checkoutForm(
     amount: Amount,
     orderId: string,
-    options: CheckoutOptions = {},
-  ): Promise<EpointResponse> {
-    return this.post('/api/1/payment-request', this.checkout(amount, orderId, options))
+    options: PaymentOptions = {},
+  ): Promise<CheckoutForm> {
+    const body = await buildBody(
+      this.publicKey,
+      this.privateKey,
+      this.payment(amount, orderId, options),
+    )
+    return { url: `${this.baseUrl}/api/1/checkout`, data: body.data, signature: body.signature }
   }
 
-  createAmexPayment(
+  async createPaymentRequest(
+    amount: Amount,
+    orderId: string,
+    options: PaymentOptions = {},
+  ): Promise<EpointResponse> {
+    return this.post('/api/1/payment-request', this.payment(amount, orderId, options))
+  }
+
+  async createAmexPayment(
     amount: Amount,
     orderId: string,
     options: CheckoutOptions = {},
@@ -155,7 +179,7 @@ export class EpointClient {
     return this.post('/api/1/amex-request', this.checkout(amount, orderId, options))
   }
 
-  changePaymentSum(
+  async changePaymentSum(
     amount: Amount,
     orderId: string,
     options: CheckoutOptions = {},
@@ -163,23 +187,27 @@ export class EpointClient {
     return this.post('/api/1/payment-change-sum', this.checkout(amount, orderId, options))
   }
 
-  reserve(amount: Amount, orderId: string, options: CheckoutOptions = {}): Promise<EpointResponse> {
+  async reserve(
+    amount: Amount,
+    orderId: string,
+    options: CheckoutOptions = {},
+  ): Promise<EpointResponse> {
     return this.post('/api/1/pre-auth-request', this.checkout(amount, orderId, options))
   }
 
-  capture(transaction: string, amount: Amount): Promise<EpointResponse> {
+  async capture(transaction: string, amount: Amount): Promise<EpointResponse> {
     return this.post('/api/1/pre-auth-complete', { transaction, amount: money(amount) })
   }
 
-  getStatus(transaction: string): Promise<EpointResponse> {
-    return this.post('/api/1/get-status', { transaction })
+  async getStatus(transaction: string): Promise<EpointResponse> {
+    return this.post('/api/1/get-status', { transaction }, { paymentState: true })
   }
 
-  getCardStatus(cardId: string): Promise<EpointResponse> {
+  async getCardStatus(cardId: string): Promise<EpointResponse> {
     return this.post('/api/1/get-status-card', { card_id: cardId })
   }
 
-  createSplitPayment(
+  async createSplitPayment(
     amount: Amount,
     orderId: string,
     splitAccount: string,
@@ -193,7 +221,21 @@ export class EpointClient {
     })
   }
 
-  splitChargeSavedCard(
+  async createTokenSplitPayment(
+    amount: Amount,
+    orderId: string,
+    splitAccount: string,
+    splitAmount: Amount,
+    options: CheckoutOptions = {},
+  ): Promise<EpointResponse> {
+    return this.post('/api/1/token/split-payment', {
+      ...this.checkout(amount, orderId, options),
+      split_user: splitAccount,
+      split_amount: money(splitAmount),
+    })
+  }
+
+  async splitChargeSavedCard(
     cardId: string,
     amount: Amount,
     orderId: string,
@@ -213,7 +255,7 @@ export class EpointClient {
     })
   }
 
-  registerCard(options: RegisterCardOptions = {}): Promise<EpointResponse> {
+  async registerCard(options: RegisterCardOptions = {}): Promise<EpointResponse> {
     return this.post('/api/1/card-registration', {
       language: options.language ?? this.language,
       refund: flag(options.forPayouts),
@@ -223,7 +265,7 @@ export class EpointClient {
     })
   }
 
-  registerCardAndPay(
+  async registerCardAndPay(
     amount: Amount,
     orderId: string,
     options: CheckoutOptions = {},
@@ -231,7 +273,7 @@ export class EpointClient {
     return this.post('/api/1/card-registration-with-pay', this.checkout(amount, orderId, options))
   }
 
-  chargeSavedCard(
+  async chargeSavedCard(
     cardId: string,
     amount: Amount,
     orderId: string,
@@ -247,7 +289,7 @@ export class EpointClient {
     })
   }
 
-  refund(
+  async refund(
     cardId: string,
     amount: Amount,
     orderId: string,
@@ -263,7 +305,7 @@ export class EpointClient {
     })
   }
 
-  reverse(transaction: string, options: ReverseOptions = {}): Promise<EpointResponse> {
+  async reverse(transaction: string, options: ReverseOptions = {}): Promise<EpointResponse> {
     return this.post('/api/1/reverse', {
       transaction,
       amount: options.amount === undefined ? undefined : money(options.amount),
@@ -281,11 +323,13 @@ export class EpointClient {
       amount: options.amount === undefined ? undefined : money(options.amount),
       currency: options.currency ?? this.currency,
       language: options.language ?? this.language,
+      description: options.description,
+      other_attr: options.otherAttr,
     })
     return Array.isArray(result) ? (result as Array<Record<string, unknown>>) : []
   }
 
-  payByInstallment(
+  async payByInstallment(
     amount: Amount,
     orderId: string,
     installmentCardId: string,
@@ -306,7 +350,7 @@ export class EpointClient {
       : {}
   }
 
-  payWithWallet(
+  async payWithWallet(
     walletId: string,
     amount: Amount,
     orderId: string,
@@ -322,7 +366,11 @@ export class EpointClient {
     })
   }
 
-  createWidget(amount: Amount, orderId: string, description: string): Promise<EpointResponse> {
+  async createWidget(
+    amount: Amount,
+    orderId: string,
+    description: string,
+  ): Promise<EpointResponse> {
     return this.post('/api/1/token/widget', {
       amount: money(amount),
       order_id: orderId,
@@ -330,7 +378,7 @@ export class EpointClient {
     })
   }
 
-  createInvoice(
+  async createInvoice(
     amount: Amount,
     periodFrom: string,
     periodTo: string,
@@ -339,7 +387,7 @@ export class EpointClient {
     return this.post('/api/1/invoices/create', this.invoice(amount, periodFrom, periodTo, options))
   }
 
-  updateInvoice(
+  async updateInvoice(
     invoiceId: number,
     amount: Amount,
     periodFrom: string,
@@ -375,23 +423,23 @@ export class EpointClient {
     }
   }
 
-  getInvoice(invoiceId: number): Promise<EpointResponse> {
+  async getInvoice(invoiceId: number): Promise<EpointResponse> {
     return this.post('/api/1/invoices/view', { id: invoiceId })
   }
 
-  listInvoices(options: { kind?: string; order?: string } = {}): Promise<EpointResponse> {
+  async listInvoices(options: { kind?: string; order?: string } = {}): Promise<EpointResponse> {
     return this.post('/api/1/invoices/list', { type: options.kind, order: options.order })
   }
 
-  sendInvoiceSms(invoiceId: number, phone: string): Promise<EpointResponse> {
+  async sendInvoiceSms(invoiceId: number, phone: string): Promise<EpointResponse> {
     return this.post('/api/1/invoices/send-sms', { id: invoiceId, phone })
   }
 
-  sendInvoiceEmail(invoiceId: number, email: string): Promise<EpointResponse> {
+  async sendInvoiceEmail(invoiceId: number, email: string): Promise<EpointResponse> {
     return this.post('/api/1/invoices/send-email', { id: invoiceId, email })
   }
 
-  createBankTransfer(
+  async createBankTransfer(
     params: {
       orderId: string
       amount: Amount
@@ -416,6 +464,7 @@ export class EpointClient {
       address: options.address,
       additional_info: options.additionalInfo,
       webhook_url: options.webhookUrl,
+      bulk_description: options.bulkDescription,
     })
   }
 
@@ -427,7 +476,7 @@ export class EpointClient {
     return parse(...(await this.request('GET', '/api/heartbeat')))
   }
 
-  verifyCallback(data: string, signature: string): Promise<EpointCallback> {
+  async verifyCallback(data: string, signature: string): Promise<EpointCallback> {
     return verifyCallback(this.privateKey, data, signature)
   }
 }

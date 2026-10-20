@@ -64,6 +64,27 @@ describe('verifyCallback', () => {
     expect(callback.orderId).toBe('order-1')
     expect(callback.transaction).toBe('te0000000001')
     expect(callback.amount).toBe(30.75)
+    expect(callback.bankResponse).toBeNull()
+    expect(callback.traceId).toBeNull()
+    expect(callback.cardId).toBeNull()
+  })
+
+  it('reads bank_response, trace_id and card_id from a callback', async () => {
+    const data = encodePayload({
+      order_id: 'order-2',
+      status: 'success',
+      transaction: 'te0000000002',
+      amount: '12.40',
+      bank_response: '000',
+      trace_id: 'tr-1',
+      card_id: 'ce0000000001',
+    })
+    const callback = await verifyCallback(PRIVATE_KEY, data, await sign(PRIVATE_KEY, data))
+
+    expect(callback.bankResponse).toBe('000')
+    expect(callback.traceId).toBe('tr-1')
+    expect(callback.cardId).toBe('ce0000000001')
+    expect(callback.amount).toBe(12.4)
   })
 
   it('rejects a tampered payload', async () => {

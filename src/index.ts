@@ -19,10 +19,13 @@ export type {
   Amount,
   BankTransferOptions,
   ChargeOptions,
+  CheckoutForm,
   CheckoutOptions,
   ClientOptions,
   InstallmentQueryOptions,
   InvoiceOptions,
+  PaymentOptions,
   RegisterCardOptions,
   ReverseOptions,
 } from './types'
+export { type B2BWebhook, parseB2BWebhook } from './webhook'
