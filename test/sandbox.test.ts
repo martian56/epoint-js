@@ -204,6 +204,125 @@ describe('sandbox', () => {
     expect((await client.getBankTransfer(id)).get('order_id')).toBe(id)
   })
 
+  it('reads back a payment that ended in status error', async ({ skip }) => {
+    if (!available) skip()
+    const created = await client.createPayment(10, orderId())
+    await pay(created.redirectUrl!, '4000000000009998')
+    const status = await client.getStatus(created.transaction!)
+    expect(status.status).toBe('error')
+    expect(status.ok).toBe(false)
+    expect(status.transaction).toBe(created.transaction)
+    expect(status.message).toBe('An error occurred during payment')
+    expect(status.code).toBe('')
+  })
+
+  it('still throws for an unknown transaction', async ({ skip }) => {
+    if (!available) skip()
+    await expect(client.getStatus('te999999999999')).rejects.toThrow(GatewayError)
+  })
+
+  it('reads back server_error and returned', async ({ skip }) => {
+    if (!available) skip()
+    const timedOut = await client.createPayment(10, orderId())
+    await pay(timedOut.redirectUrl!, '4000000000009999')
+    const timeout = await client.getStatus(timedOut.transaction!)
+    expect(timeout.status).toBe('server_error')
+    expect(timeout.ok).toBe(false)
+
+    const settled = await client.createPayment(20, orderId())
+    await pay(settled.redirectUrl!)
+    await client.reverse(settled.transaction!)
+    const returned = await client.getStatus(settled.transaction!)
+    expect(returned.status).toBe('returned')
+    expect(returned.ok).toBe(false)
+    expect(returned.amount).toBe(20)
+    expect(returned.cardMask).toBe('411111******1111')
+    expect(returned.traceId).toBeTruthy()
+  })
+
+  it('splits a token payment with the partner', async ({ skip }) => {
+    if (!available) skip()
+    await grantAll()
+    const created = await client.createTokenSplitPayment(100, orderId(), PARTNER_KEY, 30)
+    expect(created.ok).toBe(true)
+    expect(created.redirectUrl).toBeTruthy()
+    expect(created.transaction).toBeTruthy()
+    await pay(created.redirectUrl!)
+    expect((await client.getStatus(created.transaction!)).status).toBe('success')
+
+    await expect(client.createTokenSplitPayment(100, orderId(), 'i999999999', 30)).rejects.toThrow(
+      GatewayError,
+    )
+  })
+
+  it('posts the checkout form to the hosted card page', async ({ skip }) => {
+    if (!available) skip()
+    const id = orderId()
+    const form = await client.checkoutForm(35, id, { description: 'Form', isInstallment: false })
+    const response = await fetch(form.url, {
+      method: 'POST',
+      body: new URLSearchParams({ data: form.data, signature: form.signature }),
+      redirect: 'manual',
+    })
+    expect(response.status).toBe(303)
+    const location = response.headers.get('location') ?? ''
+    expect(location).toContain('/checkout/')
+
+    await pay(location)
+    const listed = await fetch(
+      `${SANDBOX_URL}/_sandbox/transactions?merchant=${PUBLIC_KEY}&limit=200`,
+    )
+    const transactions = (await listed.json()) as Array<{ order_id: string; transaction: string }>
+    const transaction = transactions.find((row) => row.order_id === id)?.transaction
+    expect(transaction).toBeTruthy()
+    const status = await client.getStatus(transaction!)
+    expect(status.status).toBe('success')
+    expect(status.amount).toBe(35)
+  })
+
+  it('updates the invoice fields that view returns', async ({ skip }) => {
+    if (!available) skip()
+    const created = await client.createInvoice(10, '2026-01-01', '2026-12-31', { name: 'Leyla' })
+    const invoiceId = created.get<number>('id')!
+    await client.updateInvoice(invoiceId, 12, '2026-01-01', '2026-12-31', {
+      tin: '1234567892',
+      contractNumber: 'C-2026-1',
+      merchantOrderId: 'M-1',
+    })
+    const invoice = (await client.getInvoice(invoiceId)).get<Record<string, unknown>>('invoice')!
+    expect(invoice.inn).toBe('1234567892')
+    expect(invoice.contract_number).toBe('C-2026-1')
+    expect(invoice.merchant_order_id).toBe('M-1')
+  })
+
+  it('accepts the new optional parameters', async ({ skip }) => {
+    if (!available) skip()
+    await grantAll()
+    expect((await client.createPayment(10, orderId(), { isInstallment: true })).ok).toBe(true)
+    expect((await client.createPaymentRequest(10, orderId(), { isInstallment: false })).ok).toBe(
+      true,
+    )
+    const plans = await client.getInstallmentPlans(orderId(), {
+      amount: 200,
+      description: 'Sofa',
+      otherAttr: { sku: 'S1' },
+    })
+    expect(plans.length).toBeGreaterThan(0)
+    const transfer = await client.createBankTransfer(
+      {
+        orderId: orderId(),
+        amount: 10,
+        description: 'Fees',
+        iban: 'AZ21NABZ00000000137010001944',
+        name: 'Logistika MMC',
+        tin: '1234567892',
+        bankCode: '505141',
+      },
+      { bulkDescription: 'July' },
+    )
+    expect(transfer.ok).toBe(true)
+  })
+
   it('refuses a request missing a documented-required field', async ({ skip }) => {
     if (!available) skip()
     await expect(client.createPayment(10, '')).rejects.toThrow(GatewayError)

@@ -22,12 +22,30 @@ export async function buildBody(
   return { data, signature: await sign(privateKey, data) }
 }
 
-export function parse(statusCode: number, body: unknown): EpointResponse {
+function isPaymentState(statusCode: number, record: Payload): boolean {
+  return (
+    statusCode >= 200 &&
+    statusCode < 300 &&
+    record.status === Status.ERROR &&
+    typeof record.transaction === 'string' &&
+    record.transaction !== ''
+  )
+}
+
+export function parse(
+  statusCode: number,
+  body: unknown,
+  options: { paymentState?: boolean } = {},
+): EpointResponse {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     throw new TransportError(`unexpected response body: ${JSON.stringify(body)}`, statusCode)
   }
 
   const record = body as Payload
+  if (options.paymentState && isPaymentState(statusCode, record)) {
+    return new EpointResponse(record)
+  }
+
   if (record.status === Status.ERROR) {
     throw new GatewayError(String(record.message ?? 'request refused'), {
       code: record.code == null ? undefined : String(record.code),

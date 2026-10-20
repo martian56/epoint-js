@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { EpointClient, TransportError } from '../src'
-import { matches } from '../src/signing'
+import { EpointClient, GatewayError, TransportError } from '../src'
+import { EpointResponse } from '../src/response'
+import { decodeData, matches } from '../src/signing'
 
 const PUBLIC_KEY = 'i000000001'
 const PRIVATE_KEY = 'sandbox_private_key_0000000001'
@@ -181,5 +182,224 @@ describe('EpointClient', () => {
     expect(requests[0]!.contentType).toContain('application/json')
     expect(requests[0]!.body).toHaveProperty('data')
     expect(requests[0]!.body).toHaveProperty('signature')
+  })
+
+  it('resolves get-status for a payment that ended in status error', async () => {
+    const { client } = clientWith({
+      status: 'error',
+      code: '',
+      message: 'An error occurred during payment',
+      transaction: 'te1',
+      amount: 10,
+    })
+    const result = await client.getStatus('te1')
+    expect(result.status).toBe('error')
+    expect(result.ok).toBe(false)
+    expect(result.transaction).toBe('te1')
+    expect(result.message).toBe('An error occurred during payment')
+  })
+
+  it('throws on a get-status error envelope with no transaction', async () => {
+    const { client } = clientWith({ status: 'error', message: 'Unknown transaction: te9' })
+    await expect(client.getStatus('te9')).rejects.toThrow(GatewayError)
+    const empty = clientWith({ status: 'error', message: 'x', transaction: '' })
+    await expect(empty.client.getStatus('te9')).rejects.toThrow(GatewayError)
+  })
+
+  it('throws on a get-status error with a transaction but a non-2xx code', async () => {
+    const { client } = clientWith({ status: 'error', message: 'x', transaction: 'te1' }, 403)
+    await expect(client.getStatus('te1')).rejects.toThrow(GatewayError)
+    const server = clientWith({ detail: 'boom', transaction: 'te1' }, 500)
+    await expect(server.client.getStatus('te1')).rejects.toThrow(TransportError)
+  })
+
+  it('keeps throwing for status error with a transaction on other endpoints', async () => {
+    const { client } = clientWith({ status: 'error', message: 'x', transaction: 'te1' })
+    await expect(client.createPayment(1, 'o')).rejects.toThrow(GatewayError)
+    await expect(client.reverse('te1')).rejects.toThrow(GatewayError)
+  })
+
+  it('treats success, SUCCESS and ok as ok and nothing else', () => {
+    for (const status of ['success', 'SUCCESS', 'ok']) {
+      expect(new EpointResponse({ status }).ok).toBe(true)
+    }
+    for (const status of ['error', 'failed', 'server_error', 'returned', 'new', 'FAILED', 'OK']) {
+      expect(new EpointResponse({ status }).ok).toBe(false)
+    }
+    expect(new EpointResponse({}).ok).toBe(false)
+  })
+
+  it('reads the heartbeat and a B2B transfer as ok', async () => {
+    const heartbeat = clientWith({ status: 'ok', trace_id: 't1' })
+    expect((await heartbeat.client.heartbeat()).ok).toBe(true)
+    const transfer = clientWith({ status: 'SUCCESS', order_id: 'b1' })
+    expect((await transfer.client.getBankTransfer('b1')).ok).toBe(true)
+  })
+
+  it('exposes the documented response fields as getters', () => {
+    const response = new EpointResponse({
+      status: 'success',
+      trace_id: 'tr1',
+      code: '000',
+      bank_transaction: 'BT1',
+      bank_response: '000',
+      operation_code: '100',
+      rrn: '123456789012',
+      card_name: 'TESTER',
+      card_mask: '411111******1111',
+      amount: '25.50',
+      card_id: 'ce1',
+      order_id: 'o1',
+      widget_url: 'https://epoint.test/w?widget=1',
+    })
+    expect(response.traceId).toBe('tr1')
+    expect(response.code).toBe('000')
+    expect(response.bankTransaction).toBe('BT1')
+    expect(response.bankResponse).toBe('000')
+    expect(response.operationCode).toBe('100')
+    expect(response.rrn).toBe('123456789012')
+    expect(response.cardName).toBe('TESTER')
+    expect(response.cardMask).toBe('411111******1111')
+    expect(response.amount).toBe(25.5)
+    expect(response.cardId).toBe('ce1')
+    expect(response.orderId).toBe('o1')
+    expect(response.widgetUrl).toBe('https://epoint.test/w?widget=1')
+    expect(response.get('trace_id')).toBe('tr1')
+    expect(response.raw.amount).toBe('25.50')
+  })
+
+  it('reads amount as a number or numeric string and leaves the rest undefined', () => {
+    expect(new EpointResponse({ amount: 10 }).amount).toBe(10)
+    expect(new EpointResponse({ amount: '7.25' }).amount).toBe(7.25)
+    expect(new EpointResponse({ amount: 'abc' }).amount).toBeUndefined()
+    expect(new EpointResponse({ amount: '' }).amount).toBeUndefined()
+    expect(new EpointResponse({ amount: null }).amount).toBeUndefined()
+    const empty = new EpointResponse({})
+    expect(empty.amount).toBeUndefined()
+    expect(empty.rrn).toBeUndefined()
+    expect(empty.traceId).toBeUndefined()
+    expect(empty.cardId).toBeUndefined()
+  })
+
+  it('posts a token split payment like a split payment', async () => {
+    const { fetchImpl, calls } = mockFetch({ status: 'success', transaction: 'te1' })
+    const client = new EpointClient({
+      publicKey: PUBLIC_KEY,
+      privateKey: PRIVATE_KEY,
+      baseUrl: 'https://epoint.test',
+      successRedirectUrl: 'https://shop.test/ok',
+      errorRedirectUrl: 'https://shop.test/fail',
+      fetch: fetchImpl,
+    })
+    await client.createTokenSplitPayment(100, 'o1', 'i000000002', 30, {
+      description: 'split',
+      errorRedirectUrl: 'https://shop.test/own-fail',
+    })
+    await client.createSplitPayment(100, 'o1', 'i000000002', 30, {
+      description: 'split',
+      errorRedirectUrl: 'https://shop.test/own-fail',
+    })
+
+    expect(calls[0]!.url).toBe('https://epoint.test/api/1/token/split-payment')
+    expect(calls[0]!.payload).toEqual({
+      public_key: PUBLIC_KEY,
+      amount: '100.00',
+      currency: 'AZN',
+      language: 'az',
+      order_id: 'o1',
+      description: 'split',
+      success_redirect_url: 'https://shop.test/ok',
+      error_redirect_url: 'https://shop.test/own-fail',
+      split_user: 'i000000002',
+      split_amount: '30.00',
+    })
+    expect(calls[0]!.payload).toEqual(calls[1]!.payload)
+  })
+
+  it('builds a signed checkout form without sending a request', async () => {
+    const { client, calls } = clientWith({})
+    const form = await client.checkoutForm(30.75, 'o1', {
+      description: 'Kilim',
+      isInstallment: true,
+      successRedirectUrl: 'https://shop.test/ok',
+    })
+
+    expect(calls).toHaveLength(0)
+    expect(form.url).toBe('https://epoint.test/api/1/checkout')
+    expect(await matches(PRIVATE_KEY, form.data, form.signature)).toBe(true)
+    expect(decodeData(form.data)).toEqual({
+      public_key: PUBLIC_KEY,
+      amount: '30.75',
+      currency: 'AZN',
+      language: 'az',
+      order_id: 'o1',
+      description: 'Kilim',
+      success_redirect_url: 'https://shop.test/ok',
+      is_installment: 1,
+    })
+  })
+
+  it('sends is_installment as 1 or 0 and omits it when not given', async () => {
+    const { client, calls } = clientWith({ status: 'success' })
+    await client.createPayment(1, 'a', { isInstallment: true })
+    await client.createPayment(1, 'b', { isInstallment: false })
+    await client.createPayment(1, 'c')
+    await client.createPaymentRequest(1, 'd', { isInstallment: true })
+    await client.createPaymentRequest(1, 'e')
+
+    expect(calls[0]!.payload.is_installment).toBe(1)
+    expect(calls[1]!.payload.is_installment).toBe(0)
+    expect(calls[2]!.payload).not.toHaveProperty('is_installment')
+    expect(calls[3]!.url).toBe('https://epoint.test/api/1/payment-request')
+    expect(calls[3]!.payload.is_installment).toBe(1)
+    expect(calls[4]!.payload).not.toHaveProperty('is_installment')
+
+    const form = await client.checkoutForm(1, 'f', { isInstallment: false })
+    expect(decodeData(form.data).is_installment).toBe(0)
+    const bare = await client.checkoutForm(1, 'g')
+    expect(decodeData(bare.data)).not.toHaveProperty('is_installment')
+  })
+
+  it('sends description and other_attr with an installment plan query', async () => {
+    const { client, calls } = clientWith([])
+    await client.getInstallmentPlans('o1', {
+      amount: 200,
+      description: 'Sofa',
+      otherAttr: { sku: 'S1' },
+    })
+    await client.getInstallmentPlans('o2')
+
+    expect(calls[0]!.payload.description).toBe('Sofa')
+    expect(calls[0]!.payload.other_attr).toEqual({ sku: 'S1' })
+    expect(calls[1]!.payload).not.toHaveProperty('description')
+    expect(calls[1]!.payload).not.toHaveProperty('other_attr')
+  })
+
+  it('sends bulk_description with a bank transfer', async () => {
+    const bodies: Array<Record<string, unknown>> = []
+    const client = new EpointClient({
+      publicKey: PUBLIC_KEY,
+      privateKey: PRIVATE_KEY,
+      baseUrl: 'https://epoint.test',
+      fetch: (async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string) as { data: string }
+        bodies.push(decodeData(body.data))
+        return new Response(JSON.stringify({ status: 'success' }))
+      }) as unknown as typeof fetch,
+    })
+    const params = {
+      orderId: 'b1',
+      amount: 100,
+      description: 'fees',
+      iban: 'AZ21NABZ00000000137010001944',
+      name: 'ACME',
+      tin: '1234567892',
+      bankCode: '505141',
+    }
+    await client.createBankTransfer(params, { bulkDescription: 'July payroll' })
+    await client.createBankTransfer(params)
+
+    expect(bodies[0]!.bulk_description).toBe('July payroll')
+    expect(bodies[1]!).not.toHaveProperty('bulk_description')
   })
 })
