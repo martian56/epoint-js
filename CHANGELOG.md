@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+- Published as `epoint-js`. Up to 0.4.0 the package was `@martian56/epoint`, which is now
+  deprecated with a message pointing here. There are no code changes: install `epoint-js` and
+  change the import, nothing else.
+
 ## 0.4.0
 
 - `getStatus` resolves for a payment that ended in status `error`, which the docs list as a
