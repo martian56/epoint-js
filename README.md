@@ -1,4 +1,4 @@
-# @martian56/epoint
+# epoint-js
 
 TypeScript client for the [epoint.az](https://epoint.az) payment gateway.
 
@@ -8,13 +8,16 @@ Fully typed, no runtime dependencies, runs anywhere with `fetch` and Web Crypto 
 Deno, browsers, edge runtimes).
 
 ```bash
-npm install @martian56/epoint
+npm install epoint-js
 ```
+
+This package was published as `@martian56/epoint` up to 0.4.0. That name is deprecated; install
+`epoint-js` instead. The API is the same.
 
 ## Quick start
 
 ```ts
-import { EpointClient } from '@martian56/epoint'
+import { EpointClient } from 'epoint-js'
 
 const client = new EpointClient({
   publicKey: 'i000000001',
@@ -29,7 +32,7 @@ Send the customer to `payment.redirectUrl`. When they finish, epoint calls your 
 it before trusting it:
 
 ```ts
-import { SignatureError } from '@martian56/epoint'
+import { SignatureError } from 'epoint-js'
 
 try {
   const callback = await client.verifyCallback(data, signature)
@@ -43,7 +46,7 @@ try {
 ## Configuration
 
 ```ts
-import { Currency, EpointClient, Language } from '@martian56/epoint'
+import { Currency, EpointClient, Language } from 'epoint-js'
 
 new EpointClient({
   publicKey: 'i000000001',
@@ -133,7 +136,7 @@ what production sends. Each is a const object with a matching type, so you get b
 and the union, and a plain string still works anywhere an enum is accepted.
 
 ```ts
-import { Currency, EpointClient, Language, Status } from '@martian56/epoint'
+import { Currency, EpointClient, Language, Status } from 'epoint-js'
 
 const client = EpointClient.fromEnv({ language: Language.EN, currency: Currency.USD })
 
@@ -209,7 +212,7 @@ the body as a string or an already parsed object, ignores unknown fields and kee
 status as it came.
 
 ```ts
-import { parseB2BWebhook } from '@martian56/epoint'
+import { parseB2BWebhook } from 'epoint-js'
 
 const hook = parseB2BWebhook(await request.text())
 const transfer = await client.getBankTransfer(hook.orderId)

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@martian56/epoint",
+      "name": "epoint-js",
       "devDependencies": {
         "@biomejs/biome": "^2.5.4",
         "@types/node": "^26.1.1",
